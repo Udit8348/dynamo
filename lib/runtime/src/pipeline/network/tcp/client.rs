@@ -250,9 +250,35 @@ async fn handle_reader(
                         }
                     }
                     Some(Err(e)) => {
-                        // TODO(#171) - address fatal errors
-                        // in this case the binary representation of the message is invalid
-                        panic!("fatal error - failed to decode message from stream; invalid line protocol: {e:?}");
+                        match e {
+                            crate::pipeline::error::TwoPartCodecError::Io(io_err) => {
+                                match io_err.kind() {
+                                    std::io::ErrorKind::ConnectionReset
+                                    | std::io::ErrorKind::ConnectionAborted
+                                    | std::io::ErrorKind::BrokenPipe
+                                    | std::io::ErrorKind::UnexpectedEof => {
+                                        tracing::debug!(
+                                            "tcp stream closed by server (io error: {:?})",
+                                            io_err
+                                        );
+                                        break;
+                                    }
+                                    _ => {
+                                        tracing::error!(
+                                            "tcp stream read failed (io error: {:?})",
+                                            io_err
+                                        );
+                                        break;
+                                    }
+                                }
+                            }
+                            _ => {
+                                tracing::error!(
+                                    "failed to decode message from stream; invalid line protocol: {e:?}"
+                                );
+                                break;
+                            }
+                        }
                     }
                     None => {
                         tracing::debug!("tcp stream closed by server");
@@ -963,5 +989,27 @@ mod tests {
             controller.is_killed(),
             "Controller should be killed after receiving Kill message"
         );
+    }
+
+    #[tokio::test]
+    async fn test_reader_handles_connection_reset() {
+        let (client, server) = create_tcp_pair().await;
+
+        let (read_half, _write_half) = tokio::io::split(client);
+        let framed_reader = FramedRead::new(read_half, TwoPartCodec::default());
+
+        let (alive_tx, _alive_rx) = tokio::sync::oneshot::channel::<()>();
+        let controller = Arc::new(Controller::default());
+
+        let reader_handle = tokio::spawn(async move {
+            handle_reader(framed_reader, controller, alive_tx).await
+        });
+
+        // Simulate abrupt drop of server
+        drop(server);
+
+        // Reader should exit without panic
+        let result = reader_handle.await;
+        assert!(result.is_ok(), "Reader panicked on connection reset");
     }
 }
