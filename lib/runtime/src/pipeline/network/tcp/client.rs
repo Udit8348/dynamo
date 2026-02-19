@@ -250,6 +250,7 @@ async fn handle_reader(
                         }
                     }
                     Some(Err(e)) => {
+                        // match the error and handle it
                         match e {
                             crate::pipeline::error::TwoPartCodecError::Io(io_err) => {
                                 match io_err.kind() {
@@ -272,6 +273,7 @@ async fn handle_reader(
                                     }
                                 }
                             }
+                            // unknown error
                             _ => {
                                 tracing::error!(
                                     "failed to decode message from stream; invalid line protocol: {e:?}"
@@ -1006,10 +1008,16 @@ mod tests {
         });
 
         // Simulate abrupt drop of server
+        // Force an RST on close to reliably produce ConnectionReset on the client side.
+        let server = server.into_std().unwrap();
+        server
+            .set_linger(Some(std::time::Duration::from_secs(0)))
+            .unwrap();
         drop(server);
 
         // Reader should exit without panic
-        let result = reader_handle.await;
-        assert!(result.is_ok(), "Reader panicked on connection reset");
+        let result = tokio::time::timeout(std::time::Duration::from_secs(2), reader_handle).await;
+        assert!(result.is_ok(), "Reader did not exit within timeout");
+        assert!(result.unwrap().is_ok(), "Reader panicked on connection reset");
     }
 }
