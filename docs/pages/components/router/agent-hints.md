@@ -5,8 +5,6 @@ title: Agent Hints
 subtitle: Per-request hints for scheduling, load balancing, and KV cache optimization
 ---
 
-# Agent Hints
-
 Agent hints are optional per-request hints passed via the `nvext.agent_hints` field in the request body. They allow the calling agent or application to communicate request-level metadata that the router uses to improve scheduling, load balancing, and KV cache utilization.
 
 ```json
@@ -49,11 +47,11 @@ A request with `latency_sensitivity: 5.0` arriving at time `T` is treated as if 
 
 Expected output sequence length — the estimated number of output tokens the request will generate. The router uses this hint in two ways:
 
-1. **Output block tracking**: When `--track-output-blocks` is enabled, the router adds placeholder blocks during generation and applies fractional decay based on progress toward `osl`. This gives the router a more accurate picture of each worker's KV cache utilization for long-running requests.
+1. **Output block tracking**: When output block tracking is enabled (`--router-track-output-blocks`), the router adds placeholder blocks during generation and applies fractional decay based on progress toward `osl`. This gives the router a more accurate picture of each worker's KV cache utilization for long-running requests.
 2. **Resource estimation**: Helps the router estimate total resource requirements when making routing decisions.
 
 - **Type**: `u32` (optional)
-- **Requires**: `--track-output-blocks` for output block tracking behavior
+- **Requires**: `--router-track-output-blocks` (frontend or standalone router) for output block tracking behavior
 
 ### Example
 
@@ -99,5 +97,7 @@ This is most effective for reasoning models in agentic loops, where the conversa
 
 ## See Also
 
+- **[SGLang for Agentic Workloads](../../backends/sglang/agents.md)**: SGLang engine flags for priority scheduling, eviction policies, and cache pinning
+- **[NVIDIA Request Extensions (nvext)](../frontend/nvext.md)**: Full `nvext` field reference including `cache_control`
 - **[Router Guide](router-guide.md)**: Full router configuration and CLI arguments
 - **[Router Examples](router-examples.md)**: Usage patterns and benchmarking
